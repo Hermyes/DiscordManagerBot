@@ -59,7 +59,8 @@ internal class Program
                 GatewayIntents = GatewayIntents.All
             }))
             // .AddSingleton<CommandService>()
-            .AddSingleton<InteractionService>()
+            .AddSingleton<InteractionService>(provider =>
+                new InteractionService(provider.GetRequiredService<DiscordSocketClient>()))
             .AddSingleton<IDiscordBotConfigurationService, DiscordBotFileBasedConfigurationService>()
             .AddSingleton<ICommandHandlingService, CommandHandlingService>()
             .AddSingleton<IVoiceChannelManagementService, VoiceChannelManagementService>()
