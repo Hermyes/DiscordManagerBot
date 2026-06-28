@@ -74,4 +74,43 @@ public class ChannelsManagementModule : InteractionModuleBase<SocketInteractionC
         await Context.Interaction.RespondAsync(
             $"Теперь голосовые каналы будут создаваться в категории **{category}**.", ephemeral: true);
     }
+
+    [RequireUserPermission(ChannelPermission.ManageChannels)]
+    [SlashCommand("voice-creator",
+        "Set a voice channel that automatically creates a personal channel when a user joins it")]
+    [RequireContext(ContextType.Guild)]
+    public async Task SetVoiceCreator([Summary("Channel")] IVoiceChannel channel)
+    {
+        var guildConfiguration = await DiscordBotConfigurationService.GetGuildConfigurationAsync(Context.Guild.Id);
+
+        if (guildConfiguration == null)
+        {
+            guildConfiguration = new DiscordGuildConfiguration
+            {
+                Id = Context.Guild.Id,
+                VoiceChannelCreatorChannelId = channel.Id
+            };
+
+            await DiscordBotConfigurationService.SaveAsync(guildConfiguration);
+        }
+        else
+        {
+            guildConfiguration.VoiceChannelCreatorChannelId = channel.Id;
+
+            await DiscordBotConfigurationService.UpdateAsync(guildConfiguration);
+        }
+
+        await Context.Interaction.RespondAsync(
+            $"Теперь канал **{channel.Name}** будет создавать персональные каналы при входе.", ephemeral: true);
+    }
+
+    [SlashCommand("mychannelname", "Set the name of the personal channel that is created when you join the creator")]
+    [RequireContext(ContextType.Guild)]
+    public async Task SetMyChannelName([Summary("Name")] string name)
+    {
+        await DiscordBotConfigurationService.SetUserChannelNameAsync(Context.Guild.Id, Context.User.Id, name);
+
+        await Context.Interaction.RespondAsync(
+            $"Теперь твой персональный канал будет называться **{name}**.", ephemeral: true);
+    }
 }

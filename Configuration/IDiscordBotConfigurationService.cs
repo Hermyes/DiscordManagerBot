@@ -9,4 +9,8 @@ public interface IDiscordBotConfigurationService
     Task UpdateAsync(DiscordGuildConfiguration discordGuildConfiguration);
 
     Task SaveAsync(DiscordGuildConfiguration discordGuildConfiguration);
+
+    ValueTask<UserVoiceChannelName> GetUserChannelNameAsync(ulong guildId, ulong userId);
+
+    Task SetUserChannelNameAsync(ulong guildId, ulong userId, string name);
 }

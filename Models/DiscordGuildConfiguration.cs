@@ -5,4 +5,6 @@ public class DiscordGuildConfiguration
     public ulong Id { get; init; }
 
     public string VoiceChannelCreationCategory { get; set; }
+
+    public ulong? VoiceChannelCreatorChannelId { get; set; }
 }

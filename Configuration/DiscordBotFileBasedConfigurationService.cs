@@ -28,4 +28,33 @@ public class DiscordBotFileBasedConfigurationService : IDiscordBotConfigurationS
         await _applicationDbContext.GuildConfigurations.AddAsync(discordGuildConfiguration);
         await _applicationDbContext.SaveChangesAsync();
     }
+
+    public async ValueTask<UserVoiceChannelName> GetUserChannelNameAsync(ulong guildId, ulong userId)
+    {
+        return await _applicationDbContext.UserVoiceChannelNames
+            .FindAsync(guildId, userId);
+    }
+
+    public async Task SetUserChannelNameAsync(ulong guildId, ulong userId, string name)
+    {
+        var existing = await _applicationDbContext.UserVoiceChannelNames
+            .FindAsync(guildId, userId);
+
+        if (existing == null)
+        {
+            await _applicationDbContext.UserVoiceChannelNames.AddAsync(new UserVoiceChannelName
+            {
+                GuildId = guildId,
+                UserId = userId,
+                Name = name
+            });
+        }
+        else
+        {
+            existing.Name = name;
+            _applicationDbContext.UserVoiceChannelNames.Update(existing);
+        }
+
+        await _applicationDbContext.SaveChangesAsync();
+    }
 }

@@ -11,4 +11,14 @@ public sealed class ApplicationDbContext : DbContext
     }
 
     public DbSet<DiscordGuildConfiguration> GuildConfigurations { get; set; }
+
+    public DbSet<UserVoiceChannelName> UserVoiceChannelNames { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<UserVoiceChannelName>()
+            .HasKey(name => new {name.GuildId, name.UserId});
+    }
 }

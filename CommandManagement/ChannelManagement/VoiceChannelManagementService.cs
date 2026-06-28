@@ -15,10 +15,13 @@ public class VoiceChannelManagementService : IVoiceChannelManagementService
     private readonly Dictionary<ulong, CancellationTokenSource>
         _voiceChannelDeletionCheckCancellationTokenSourcesDictionary;
 
+    private readonly HashSet<ulong> _managedVoiceChannels;
+
     public VoiceChannelManagementService(IServiceProvider serviceProvider)
     {
         _voiceChannelDeletionCheckCancellationTokenSourcesDictionary =
             new Dictionary<ulong, CancellationTokenSource>();
+        _managedVoiceChannels = new HashSet<ulong>();
         _discordBotConfigurationService = serviceProvider.GetRequiredService<IDiscordBotConfigurationService>();
         _discordClient = serviceProvider.GetRequiredService<DiscordSocketClient>();
 
@@ -53,6 +56,7 @@ public class VoiceChannelManagementService : IVoiceChannelManagementService
             }
         }
 
+        _managedVoiceChannels.Add(voiceChannel.Id);
         RunDeletionCheckAsync(voiceChannel.Id);
     }
 
@@ -88,43 +92,79 @@ public class VoiceChannelManagementService : IVoiceChannelManagementService
         }
     }
 
-    private Task UserVoiceStateUpdatedHandleAsync(SocketUser user, SocketVoiceState originalState,
+    private async Task UserVoiceStateUpdatedHandleAsync(SocketUser user, SocketVoiceState originalState,
         SocketVoiceState updatedState)
     {
-        if (originalState.VoiceChannel != null)
-        {
-            var voiceChannel = originalState.VoiceChannel;
-            if (voiceChannel.ConnectedUsers.Count == 0)
-            {
-                RunDeletionCheckAsync(voiceChannel.Id);
-            }
-        }
-
         if (updatedState.VoiceChannel != null)
         {
             var voiceChannel = updatedState.VoiceChannel;
             CancelDeletionCheckIfExists(voiceChannel.Id);
+
+            await HandleCreatorChannelJoinAsync(user, voiceChannel);
         }
 
-        return Task.CompletedTask;
+        if (originalState.VoiceChannel != null)
+        {
+            var voiceChannel = originalState.VoiceChannel;
+            if (_managedVoiceChannels.Contains(voiceChannel.Id) && voiceChannel.ConnectedUsers.Count == 0)
+            {
+                RunDeletionCheckAsync(voiceChannel.Id);
+            }
+        }
+    }
+
+    private async Task HandleCreatorChannelJoinAsync(SocketUser user, SocketVoiceChannel joinedChannel)
+    {
+        var guild = joinedChannel.Guild;
+        var guildConfiguration = await _discordBotConfigurationService.GetGuildConfigurationAsync(guild.Id);
+
+        if (guildConfiguration?.VoiceChannelCreatorChannelId == null ||
+            joinedChannel.Id != guildConfiguration.VoiceChannelCreatorChannelId.Value)
+        {
+            return;
+        }
+
+        if (user is not SocketGuildUser guildUser)
+        {
+            return;
+        }
+
+        var customName = await _discordBotConfigurationService.GetUserChannelNameAsync(guild.Id, guildUser.Id);
+        var channelName = !string.IsNullOrWhiteSpace(customName?.Name)
+            ? customName.Name
+            : $"{guildUser.DisplayName ?? guildUser.Username}'s channel";
+
+        var newChannel = await guild.CreateVoiceChannelAsync(channelName,
+            channel => channel.CategoryId = joinedChannel.CategoryId);
+
+        _managedVoiceChannels.Add(newChannel.Id);
+
+        await guildUser.ModifyAsync(properties => properties.Channel = newChannel);
+
+        RunDeletionCheckAsync(newChannel.Id);
     }
 
     private async void RunDeletionCheckAsync(ulong voiceChannelId)
     {
+        CancelDeletionCheckIfExists(voiceChannelId);
+
         var cancellationTokenSource = new CancellationTokenSource();
         var cancellationToken = cancellationTokenSource.Token;
 
-        _voiceChannelDeletionCheckCancellationTokenSourcesDictionary.Add(voiceChannelId, cancellationTokenSource);
+        _voiceChannelDeletionCheckCancellationTokenSourcesDictionary[voiceChannelId] = cancellationTokenSource;
 
         try
         {
-            await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+            await Task.Delay(TimeSpan.FromMinutes(3), cancellationToken);
 
             var voiceChannel = (SocketVoiceChannel) _discordClient.GetChannel(voiceChannelId);
             if (voiceChannel != null && voiceChannel.ConnectedUsers.Count == 0)
             {
                 await voiceChannel.DeleteAsync();
+                _managedVoiceChannels.Remove(voiceChannelId);
             }
+
+            _voiceChannelDeletionCheckCancellationTokenSourcesDictionary.Remove(voiceChannelId);
         }
         catch (TaskCanceledException)
         {
